@@ -15,6 +15,9 @@ const int RST_PIN = 22;
 #define PING_CHAR_UUID "0000beef-0000-1000-8000-00805f9b34fb"
 
 
+
+
+
 MFRC522 rfid(SS_PIN, RST_PIN);
 char card[16];
 
@@ -129,7 +132,8 @@ void setup()
 
   
   esp_err_t ret = nvs_flash_init();
-  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+  {
     nvs_flash_erase();
     ret = nvs_flash_init();
   }
@@ -140,6 +144,7 @@ void setup()
   NimBLEDevice::setSecurityPasskey(123456);
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
 
+  
   server = NimBLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
 
