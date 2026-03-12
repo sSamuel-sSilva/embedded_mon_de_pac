@@ -1,4 +1,5 @@
 #include "ble.h"
+#include "espnow_gateway.h"
 
 
 NimBLEServer* server = NULL;
@@ -11,13 +12,13 @@ bool connected = false;
 unsigned long last_pong = 0;
 int missed_pongs = 0;
 
-typedef struct
-{
-    uint32_t device_id;
-    uint16_t chave1;
-    uint16_t chave2;
-    uint16_t chave3;
-} vitals_packet_t;
+// typedef struct
+// {
+//     uint32_t device_id;
+//     float chave1;
+//     uint16_t chave2;
+//     uint16_t chave3;
+// } vitals_packet_t;
 
 
 void init_ble()
@@ -105,26 +106,17 @@ bool send_card(const char* card)
 }
 
 
-bool send_vitals()
+bool send_vitals(message_t packet)
 {
-    vitals_packet_t packet;
+    if (connected)
+    {
+        vitals_char->setValue((uint8_t*)&packet, sizeof(packet));
+        vitals_char->notify();
+    
+        return true;
+    }
 
-    packet.device_id = 473197;
-    packet.chave1 = rand() % 100;
-    packet.chave2 = rand() % 100;
-    packet.chave3 = rand() % 100;
-
-    Serial.println("data");
-    Serial.println(packet.chave1);
-    Serial.println(packet.chave2);
-    Serial.println(packet.chave3);
-    Serial.println("--------------");
-
-
-    vitals_char->setValue((uint8_t*)&packet, sizeof(packet));
-    vitals_char->notify();
-
-    return true;
+    return false;
 }
 
 
@@ -142,7 +134,7 @@ void check_ping()
   Serial.println("miliss - last pong: " + String(millis() - last_pong));
   if (millis() - last_pong > 10000)
   {
-    Serial.println("❌ 10s sem pong - desconectando");
+    Serial.println("10s sem pong - desconectando");
     
     auto peers = server->getPeerDevices();
     if (!peers.empty()) {

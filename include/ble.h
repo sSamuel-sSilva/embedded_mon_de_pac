@@ -26,13 +26,21 @@ extern unsigned long last_pong;
 extern int missed_pongs;
 
 
+typedef struct message_s  {
+  uint32_t code;
+  float hr;
+  float spo;
+  float temp;
+} message_t;
+
+
 void init_ble();
 void init_rfid_service();
 void init_vitals_service();
 void init_pong_service();
 void init_adversiting();
 bool send_card(const char* card);
-bool send_vitals();
+bool send_vitals(message_t packet);
 void check_ping();
 
 
@@ -67,11 +75,6 @@ class ServerCallbacks : public NimBLEServerCallbacks
     delay(500);
     NimBLEDevice::startAdvertising();
     Serial.println("advertising");
-  }
-
-  void onAuthenticationComplete(NimBLEConnInfo& connInfo)
-  {
-    Serial.println("auth ok");
   }
 };
 
