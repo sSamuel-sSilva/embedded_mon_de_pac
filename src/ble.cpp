@@ -12,13 +12,6 @@ bool connected = false;
 unsigned long last_pong = 0;
 int missed_pongs = 0;
 
-// typedef struct
-// {
-//     uint32_t device_id;
-//     float chave1;
-//     uint16_t chave2;
-//     uint16_t chave3;
-// } vitals_packet_t;
 
 
 void init_ble()

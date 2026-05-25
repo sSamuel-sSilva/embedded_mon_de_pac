@@ -5,7 +5,7 @@
 
 char card[16];
 
-unsigned long last_send = 0;
+// unsigned long last_send = 0;
 
 void setup()
 {
@@ -38,7 +38,7 @@ void loop()
   {
     if (send_card(card)) Serial.println("sucesso");
     else Serial.println("falha no envio - card");
-    
+    Serial.println(card);
     delay(500);
   }
 

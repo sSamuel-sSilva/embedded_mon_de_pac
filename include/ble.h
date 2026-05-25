@@ -3,28 +3,26 @@
 
 #include <NimBLEDevice.h>
 #include <nvs_flash.h>
+#include <Arduino.h>
 
 
 #define RFID_SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
 #define RFID_CHAR_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
-#define PING_SERVICE_UUID "0000dead-0000-1000-8000-00805f9b34fb"
-#define PING_CHAR_UUID "0000beef-0000-1000-8000-00805f9b34fb"
-
 #define VITALS_SERVICE_UUID "0000cafe-0000-1000-8000-00805f9b34fb"
 #define VITALS_CHAR_UUID "0000c001-0000-1000-8000-00805f9b34fb"
 
+#define PING_SERVICE_UUID "0000dead-0000-1000-8000-00805f9b34fb"
+#define PING_CHAR_UUID "0000beef-0000-1000-8000-00805f9b34fb"
 
 extern NimBLEServer* server;
 extern NimBLECharacteristic* rfid_char;
 extern NimBLECharacteristic* ping_char;
 extern NimBLECharacteristic* vitals_char;
 
-
 extern bool connected;
 extern unsigned long last_pong;
 extern int missed_pongs;
-
 
 typedef struct message_s  {
   uint32_t code;

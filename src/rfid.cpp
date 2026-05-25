@@ -1,13 +1,21 @@
 #include "rfid.h"
 
 
-MFRC522 mfrc(SS_PIN, RST_PIN);
+MFRC522 mfrc(SDA_PIN, RST_PIN);
 
 
 void init_rfid()
 {   
-  SPI.begin();
+  SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SDA_PIN);
   mfrc.PCD_Init();
+
+  byte v = mfrc.PCD_ReadRegister(mfrc.VersionReg);
+  if (v == 0x00 || v == 0xFF)
+  {
+    Serial.println("rfid erro");
+    return;
+  }
+
   Serial.println("rfid ok");
 }
 
@@ -30,9 +38,3 @@ bool read_card(char buf[16])
   (&mfrc)->PICC_HaltA();
   return true;
 }
-
-
-// void get_card(char buf[16])
-// {
-//     strcpy(buf, card);
-// }

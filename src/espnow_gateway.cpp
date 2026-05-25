@@ -10,9 +10,9 @@ void init_espnow_gateway()
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
 
-    Serial.print("WiFi channel: ");
-    Serial.println(WiFi.channel());
-    Serial.println(WiFi.macAddress());
+    // Serial.print("WiFi channel: ");
+    // Serial.println(WiFi.channel());
+    // Serial.println(WiFi.macAddress());
 
     if (esp_now_init() != ESP_OK) {
         Serial.println("Error initializing ESP-NOW");
