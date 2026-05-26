@@ -1,138 +1,241 @@
-#include "ble.h"
+#include <Arduino.h>
+#include <stdbool.h>
 #include "espnow_gateway.h"
+#include "ble.h"
 
 
-NimBLEServer* server = NULL;
-NimBLECharacteristic* rfid_char = NULL;
-NimBLECharacteristic* ping_char = NULL;
-NimBLECharacteristic* vitals_char = NULL;
+#define RFID_SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
+#define RFID_CHAR_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
+
+#define VITALS_SERVICE_UUID "0000cafe-0000-1000-8000-00805f9b34fb"
+#define VITALS_CHAR_UUID "0000c001-0000-1000-8000-00805f9b34fb"
+
+#define PING_SERVICE_UUID "0000dead-0000-1000-8000-00805f9b34fb"
+#define PING_CHAR_UUID "0000beef-0000-1000-8000-00805f9b34fb"
 
 
-bool connected = false;
-unsigned long last_pong = 0;
-int missed_pongs = 0;
+
+BLE_STATUS_T status = DISCONNECTED; 
+
+static NimBLEServer* server = NULL;
+static NimBLECharacteristic* rfid_char = NULL;
+static NimBLECharacteristic* ping_char = NULL;
+static NimBLECharacteristic* vitals_char = NULL;
+
+static NimBLECharacteristic* ble_ptr_chars[] = {rfid_char, vitals_char};
+
+static const uint32_t PING_TIMEOUT = 10000;
+static const uint32_t PING_INTERVAL = 3000;
+
+static unsigned long last_pong = 0;
+static uint32_t missed_pongs = 0;
 
 
+#define SERIAL_LOG_ERROR Serial.printf("ERROR in (%s) - [%s: %d]\n", __FILE__, __func__, __LINE__);
 
-void init_ble()
+
+class ServerCallbacks : public NimBLEServerCallbacks
+{
+  void onConnect(NimBLEServer* server, NimBLEConnInfo& connInfo)
+  {
+    status = CONNECTED;
+    last_pong = millis();
+    Serial.println("conectado");
+  }
+
+  void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason)
+  {
+    NimBLEDevice::startAdvertising();
+    Serial.println("advertising");
+    status = ADVERSITING;
+  }
+};
+
+
+class PingPongCallBacks : public NimBLECharacteristicCallbacks
+{
+    void onWrite(NimBLECharacteristic* pCharacteristc, NimBLEConnInfo &connInfo) override
+    {
+        last_pong = millis();
+        missed_pongs = 0;
+    }
+};
+
+
+static bool init_ble()
 {
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
         nvs_flash_erase();
         ret = nvs_flash_init();
+    } else if (ret != ESP_OK) {
+        SERIAL_LOG_ERROR
+        return false;
     }
     
-    NimBLEDevice::init("esp32");
-    NimBLEDevice::setSecurityAuth(true, true, true);
-    NimBLEDevice::setSecurityPasskey(123456);
-    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+    NimBLEDevice::init("ESP32");
 
     server = NimBLEDevice::createServer();
+    if (!server)
+    {
+        SERIAL_LOG_ERROR
+        return false;
+    }
+
     server->setCallbacks(new ServerCallbacks());
+    server->start();
+    return true;
 }
 
 
-void init_rfid_service()
+static bool init_rfid_service()
 {
     NimBLEService* rfid_service = server->createService(RFID_SERVICE_UUID);
+    if (!rfid_service)
+    {
+        SERIAL_LOG_ERROR
+        return false;
+    }
+
     rfid_char = rfid_service->createCharacteristic(
         RFID_CHAR_UUID,
         NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ
     );
+
+    if (!rfid_char)
+    {
+        SERIAL_LOG_ERROR
+        return false;
+    }    
+
     rfid_char->setValue("...");
-    rfid_service->start();
-    Serial.println("init_rfid_service - iniciado");
+    return true;
 }
 
 
-void init_vitals_service()
+static bool init_vitals_service()
 {
     NimBLEService* vitals_service = server->createService(VITALS_SERVICE_UUID);
+    if (!vitals_service)
+    {
+        SERIAL_LOG_ERROR
+        return false;
+    }
+
     vitals_char = vitals_service->createCharacteristic(
         VITALS_CHAR_UUID,
         NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ,
         128
     );
+    
+    if (!vitals_char)
+    {
+        SERIAL_LOG_ERROR
+        return false;
+    }
+
     vitals_char->setValue("...");
-    vitals_service->start();
-    Serial.println("init_vitals_service - iniciado");
+    return true;
 }
 
 
-void init_pong_service()
+static bool init_pong_service()
 {
     NimBLEService* ping_service = server->createService(PING_SERVICE_UUID);
+    if (!ping_service)
+    {
+        SERIAL_LOG_ERROR
+        return false;
+    }
+
     ping_char = ping_service->createCharacteristic(
         PING_CHAR_UUID,
         NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::WRITE
     );
-    ping_char->setCallbacks(new PongCallbacks());
+    
+    if (!ping_char)
+    {
+        SERIAL_LOG_ERROR
+        return false;
+    }
+    
     ping_char->setValue("0");
-    ping_service->start();
-    Serial.println("init_pong_service - iniciado");
+    return true;
 }
 
 
-void init_adversiting()
+static bool init_adversiting()
 {
     NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
-    advertising->setName("esp32");
+    if (!advertising) return false;
+
+    // existe alguma inconsistencia no retorno dessas funcoes
+    // tudo esta sendo criado normalmente
+    advertising->setName("ESP32");
     advertising->addServiceUUID(RFID_SERVICE_UUID);
     advertising->addServiceUUID(PING_SERVICE_UUID);
     advertising->addServiceUUID(VITALS_SERVICE_UUID);
     advertising->start();
-    Serial.println("adversiting - iniciado");
+
+    return true;
 }
 
 
-bool send_card(const char* card)
+bool send_data(uint8_t* data, size_t size, BLE_CHARS chr)
 {
-    if (connected)
+    if (status != CONNECTED)
     {
-      rfid_char->setValue((uint8_t*)card, strlen(card));
-      rfid_char->notify();
-      return true;
+        SERIAL_LOG_ERROR
+        return false;
     }
-
-    return false;
-}
-
-
-bool send_vitals(message_t packet)
-{
-    if (connected)
-    {
-        vitals_char->setValue((uint8_t*)&packet, sizeof(packet));
-        vitals_char->notify();
     
-        return true;
+    NimBLECharacteristic* ch = ble_ptr_chars[chr];
+
+    ch->setValue(data, size);
+    if (!ch->notify())
+    {
+        SERIAL_LOG_ERROR
+        return false;
     }
 
-    return false;
+    return true;
 }
 
 
 void check_ping()
 {
-  if (!connected) return;
+  if (status == DISCONNECTED || status == ADVERSITING) return;
   
-  if (millis() - last_pong > 3000)
+  if (millis() - last_pong > PING_INTERVAL)
   {
     ping_char->setValue("ping");
     ping_char->notify();
-    Serial.println("ping");
   }
 
-  Serial.println("miliss - last pong: " + String(millis() - last_pong));
-  if (millis() - last_pong > 10000)
-  {
-    Serial.println("10s sem pong - desconectando");
-    
+  if (millis() - last_pong > PING_TIMEOUT)
+  {    
     auto peers = server->getPeerDevices();
-    if (!peers.empty()) {
-      server->disconnect(peers[0]);
-    }
-    connected = false;
+    if (!peers.empty())server->disconnect(peers[0]);
+    
+    status = DISCONNECTED;
   }
+}
+
+
+bool ble_init_all()
+{
+    if (!init_ble()) return false;
+    if (!init_rfid_service()) return false;
+    if (!init_pong_service()) return false;
+    if (!init_vitals_service()) return false;
+    if (!init_adversiting()) return false;
+
+    return true;
+}
+
+
+BLE_STATUS_T get_status()
+{
+    return status;
 }
