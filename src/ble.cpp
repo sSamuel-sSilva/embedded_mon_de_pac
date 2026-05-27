@@ -14,9 +14,6 @@
 #define PING_CHAR_UUID "0000beef-0000-1000-8000-00805f9b34fb"
 
 
-
-BLE_STATUS_T status = DISCONNECTED; 
-
 static NimBLEServer* server = NULL;
 static NimBLECharacteristic* rfid_char = NULL;
 static NimBLECharacteristic* ping_char = NULL;
@@ -30,6 +27,7 @@ static const uint32_t PING_INTERVAL = 3000;
 static unsigned long last_pong = 0;
 static uint32_t missed_pongs = 0;
 
+ble_status bluetooth_status = BLE_DISCONNECTED; 
 
 #define SERIAL_LOG_ERROR Serial.printf("ERROR in (%s) - [%s: %d]\n", __FILE__, __func__, __LINE__);
 
@@ -38,7 +36,7 @@ class ServerCallbacks : public NimBLEServerCallbacks
 {
   void onConnect(NimBLEServer* server, NimBLEConnInfo& connInfo)
   {
-    status = CONNECTED;
+    bluetooth_status = BLE_CONNECTED;
     last_pong = millis();
     Serial.println("conectado");
   }
@@ -47,7 +45,7 @@ class ServerCallbacks : public NimBLEServerCallbacks
   {
     NimBLEDevice::startAdvertising();
     Serial.println("advertising");
-    status = ADVERSITING;
+    bluetooth_status = BLE_ADVERSITING;
   }
 };
 
@@ -182,9 +180,9 @@ static bool init_adversiting()
 }
 
 
-bool send_data(uint8_t* data, size_t size, BLE_CHARS chr)
+bool send_data(uint8_t* data, size_t size, ble_chars chr)
 {
-    if (status != CONNECTED)
+    if (bluetooth_status != BLE_CONNECTED)
     {
         SERIAL_LOG_ERROR
         return false;
@@ -203,9 +201,9 @@ bool send_data(uint8_t* data, size_t size, BLE_CHARS chr)
 }
 
 
-void check_ping()
+void ble_check_ping()
 {
-  if (status == DISCONNECTED || status == ADVERSITING) return;
+  if (bluetooth_status == BLE_DISCONNECTED || bluetooth_status == BLE_ADVERSITING) return;
   
   if (millis() - last_pong > PING_INTERVAL)
   {
@@ -218,7 +216,7 @@ void check_ping()
     auto peers = server->getPeerDevices();
     if (!peers.empty())server->disconnect(peers[0]);
     
-    status = DISCONNECTED;
+    bluetooth_status = BLE_DISCONNECTED;
   }
 }
 
@@ -235,7 +233,7 @@ bool ble_init_all()
 }
 
 
-BLE_STATUS_T get_status()
+ble_status get_ble_status()
 {
-    return status;
+    return bluetooth_status;
 }
