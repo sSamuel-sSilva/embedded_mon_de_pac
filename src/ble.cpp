@@ -19,10 +19,7 @@ static NimBLECharacteristic* rfid_char = NULL;
 static NimBLECharacteristic* ping_char = NULL;
 static NimBLECharacteristic* vitals_char = NULL;
 
-static NimBLECharacteristic* ble_ptr_chars[] = {rfid_char, vitals_char};
-
-static const uint32_t PING_TIMEOUT = 10000;
-static const uint32_t PING_INTERVAL = 3000;
+static NimBLECharacteristic** ble_ptr_chars[] = {&rfid_char, &vitals_char};
 
 static unsigned long last_pong = 0;
 static uint32_t missed_pongs = 0;
@@ -43,6 +40,8 @@ class ServerCallbacks : public NimBLEServerCallbacks
 
   void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason)
   {
+    Serial.print("Disconnected reason: ");
+    Serial.println(reason);
     NimBLEDevice::startAdvertising();
     Serial.println("advertising");
     bluetooth_status = BLE_ADVERSITING;
@@ -54,6 +53,7 @@ class PingPongCallBacks : public NimBLECharacteristicCallbacks
 {
     void onWrite(NimBLECharacteristic* pCharacteristc, NimBLEConnInfo &connInfo) override
     {
+        // Serial.println("pingou");
         last_pong = millis();
         missed_pongs = 0;
     }
@@ -157,6 +157,8 @@ static bool init_pong_service()
         SERIAL_LOG_ERROR
         return false;
     }
+
+    ping_char->setCallbacks(new PingPongCallBacks());
     
     ping_char->setValue("0");
     return true;
@@ -176,6 +178,7 @@ static bool init_adversiting()
     advertising->addServiceUUID(VITALS_SERVICE_UUID);
     advertising->start();
 
+    bluetooth_status = BLE_ADVERSITING;
     return true;
 }
 
@@ -188,7 +191,7 @@ bool send_data(uint8_t* data, size_t size, ble_chars chr)
         return false;
     }
     
-    NimBLECharacteristic* ch = ble_ptr_chars[chr];
+    NimBLECharacteristic* ch = *ble_ptr_chars[chr];
 
     ch->setValue(data, size);
     if (!ch->notify())

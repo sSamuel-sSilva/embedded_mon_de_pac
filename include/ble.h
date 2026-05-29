@@ -18,6 +18,10 @@ enum ble_chars {
 };
 
 
+static const uint32_t PING_TIMEOUT = 10000;
+static const uint32_t PING_INTERVAL = 5000;
+
+
 bool ble_init_all();
 bool send_data(uint8_t* data, size_t size, ble_chars chrs);
 void ble_check_ping();
