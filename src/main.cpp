@@ -1,212 +1,194 @@
-#include <LovyanGFX.hpp>
-#include <lvgl.h>
+#include <Arduino.h>
+#include "rfid.h"
+#include "ntc_sync.h"
+#include "apr_layer.h"
+#include "espnow_gateway.h"
+#include "ble.h"
 
-LV_FONT_DECLARE(minecraftia);
 
-const int MARGIN_BOTTOM_TITLE = 10;
-const int HEADER_HEIGHT = 50;
-const int MAX_CARDS = 6;
-const int MAX_ESPS = 6;
+const uint32_t READ_CARD_DELAY = 100;
+const uint32_t UPDATE_INFO_DELAY = 50;
+uint32_t last_read = 0;
+uint32_t last_update = 0;
+uint32_t last_pong = 0;
 
-// SCK	14
-// MOSI	13
-// DC	27
-// RST	26
-// CS	25
-// BLK	33
+ntc_status ntc_init_status;
 
-class LGFX : public lgfx::LGFX_Device
+char* curr_card;
+char* curr_time;
+char new_record[25];
+char* esp_records[MAX_PEER_CON];
+const uint32_t ESP_RECORD_SIZE = 25;
+
+
+void assmeble_and_send_new_message()
 {
-  lgfx::Panel_ST7789 _panel;
-  lgfx::Bus_SPI _bus;
-
-  public:
-    LGFX(void)
+  curr_card = get_card();
+  
+  if (curr_card)
+  {
+    Serial.println(curr_card);
+    if (ntc_init_status == NTC_SUCCESS)
     {
-        {
-            auto cfg = _bus.config();
-
-            cfg.spi_host = VSPI_HOST;
-            cfg.spi_mode = 0;
-            cfg.freq_write = 40000000;
-            cfg.freq_read = 16000000;
-
-            cfg.pin_sclk = 14;
-            cfg.pin_mosi = 13;
-            cfg.pin_miso = -1;
-            cfg.pin_dc = 27;
-
-            _bus.config(cfg);
-            _panel.setBus(&_bus);
-        }
-
-        {
-            auto cfg = _panel.config();
-
-            cfg.pin_cs = 25;
-            cfg.pin_rst = 26;
-            cfg.pin_busy = -1;
-
-            cfg.panel_width = 240;
-            cfg.panel_height = 320;
-
-            cfg.offset_x = 0;
-            cfg.offset_y = 0;
-
-            cfg.invert = true;
-            // cfg.rgb_order = true;
-
-            _panel.config(cfg);
-        }
-
-        setPanel(&_panel);
+      curr_time = get_curr_time();
+      snprintf(new_record, sizeof(new_record), "%s  -  %s\n", curr_card, curr_time);
+    } else {
+      snprintf(new_record, sizeof(new_record), "%s - X\n", curr_card);
     }
-};
-
-
-LGFX tft;
-
-
-void setup_draw_header()
-{
-  lv_obj_t* header = lv_obj_create(lv_screen_active());
-
-  lv_obj_set_size(header, 240, HEADER_HEIGHT);
-  lv_obj_set_style_bg_color(header, lv_palette_main(LV_PALETTE_GREY), 0);
-  lv_obj_set_style_bg_opa(header, 64, 0);
-  lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
-  lv_obj_set_layout(header, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align( header,
-    LV_FLEX_ALIGN_SPACE_EVENLY,
-    LV_FLEX_ALIGN_CENTER,
-    LV_FLEX_ALIGN_CENTER
-  );
-
-  lv_obj_t* bluetooth_label = lv_label_create(header);
-  lv_label_set_recolor(bluetooth_label, true);
-  lv_label_set_text(bluetooth_label, "BLE");
-  lv_obj_set_style_text_color(bluetooth_label, lv_palette_lighten(LV_PALETTE_RED, 1), 0);
-
-
-  lv_obj_t* ntc_label = lv_label_create(header);
-  lv_label_set_recolor(ntc_label, true);
-  lv_label_set_text(ntc_label, "NTP");
-  lv_obj_set_style_text_color(ntc_label, lv_palette_lighten(LV_PALETTE_GREEN, 1), 0);
-
-
-  lv_obj_t* esp_now_label = lv_label_create(header);
-  lv_label_set_recolor(esp_now_label, true);
-  lv_label_set_text(esp_now_label, "ESPNOW");
-  lv_obj_set_style_text_color(esp_now_label, lv_palette_lighten(LV_PALETTE_YELLOW, 1), 0);
-}
-
-
-void setup_draw_cards_log()
-{
-  lv_obj_t* container = lv_obj_create(lv_screen_active());
-  lv_obj_set_size(container, 240, 320 - HEADER_HEIGHT);
-  lv_obj_align(container, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_set_layout(container, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
-
-
-  lv_obj_t* title = lv_label_create(container);
-  lv_obj_align(title, LV_ALIGN_CENTER, 0, 5);
-  lv_obj_set_style_margin_bottom(title, MARGIN_BOTTOM_TITLE, 0);
-  lv_obj_set_style_text_color(title, lv_palette_lighten(LV_PALETTE_BLUE, 1), 0);
-  lv_obj_set_style_align(title, LV_ALIGN_TOP_MID, 0);
-  lv_label_set_text(title, "CARTOES LIDOS");
-
-  const char* cards[MAX_CARDS] = {"Sem cartoes lidos", "", "", "", "", ""};
-  lv_obj_t* labels[MAX_CARDS];
-  
-  for (int i = 00; i < MAX_CARDS; i++)
-  {
-    labels[i] = lv_label_create(container);
-    lv_label_set_text(labels[i], cards[i]);
+    
+    bool res = send_data((uint8_t*)curr_card, strlen(curr_card), RFID_CHAR);
+    update_cards_list(new_record, res);
+    update_display();
   }
 }
 
 
-void setup_draw_esp_connecteds()
+void translate_get_esp_now_status()
 {
-  lv_obj_t* container = lv_obj_create(lv_screen_active());
-  lv_obj_set_size(container, 240, 320 - HEADER_HEIGHT);
-  lv_obj_align(container, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_set_layout(container, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+  general_status s = espnow_check_ping();
+  uint32_t status = (uint32_t)s.resume_status;
 
-  lv_obj_t* title = lv_label_create(container);
-  lv_obj_align(title, LV_ALIGN_CENTER, 0, 5);
-  lv_obj_set_style_margin_bottom(title, MARGIN_BOTTOM_TITLE, 0);
-  lv_obj_set_style_text_color(title, lv_palette_lighten(LV_PALETTE_BLUE, 1), 0);
-  lv_obj_set_style_align(title, LV_ALIGN_TOP_MID, 0);
-  lv_label_set_text(title, "ESPs CONECTADOS");
-
-  const char* esps[MAX_ESPS] = {"Sem ESPs registrados", "", "", "", "",""};
-  lv_obj_t* labels[MAX_ESPS];
-  
-  for (int i = 0; i < MAX_ESPS; i++)
+  switch (status)
   {
-    labels[i] = lv_label_create(container);
-    lv_label_set_text(labels[i], esps[i]);
+    case FULL_PEERS_CONNECTED:
+      set_new_color(ESP_NOW_LABEL, UI_OK);
+      break;
+
+    case PARTIAL_PEERS_CONNECTED:
+      set_new_color(ESP_NOW_LABEL, UI_WARNING);
+      break;
+
+    case NONE_PEER_CONNECTED:
+      set_new_color(ESP_NOW_LABEL, UI_ERROR);
+      break;
+    
+    default:
+      break;
+  }
+
+
+  for (int i = 0; i < MAX_PEER_CON; i++)
+  {
+    if (s.peers[i].code != 0)
+    {
+      const char* status_string = s.peers[i].status == ESPNOW_CONNECTED ? "Conectado" : "Desconectado"; 
+      sniprintf(esp_records[i], ESP_RECORD_SIZE, "#%d - %s", s.peers[i].code, status_string);
+      continue;
+    }
+    
+    strncpy(esp_records[i], "", 1);
+  }
+  
+  update_esps_list((const char**)esp_records);
+  update_display();
+}
+
+
+void translate_and_update_get_ble_status()
+{
+  ble_status status = get_ble_status();
+
+  switch (status)
+  {
+    case BLE_CONNECTED:
+      set_new_color(BLE_LABEL, UI_OK);
+      break;
+
+    case BLE_DISCONNECTED:
+      set_new_color(BLE_LABEL, UI_ERROR);
+      break;
+
+    case BLE_ADVERSITING:
+      set_new_color(BLE_LABEL, UI_WARNING);
+      break;
+    
+    default:
+      break;
   }
 }
-
-
-void my_flush_callback(lv_display_t* display, const lv_area_t* area, uint8_t* px_map)
-{
-  uint32_t w = area->x2 - area->x1 + 1;
-  uint32_t h = area->y2 - area->y1 + 1;
-
-  tft.startWrite();
-  tft.setAddrWindow(area->x1, area->y1, w, h);
-  tft.writePixels((uint16_t*)px_map, w * h);
-  tft.endWrite();
-
-  lv_display_flush_ready(display);
-}
-
-
-uint32_t my_get_millis(void)
-{
-  return millis();
-}
-
-
 
 
 void setup()
 {
-  tft.init();
-  lv_init();
+  Serial.begin(115200);
+  
+  ntc_init();
+  ntc_status ntc_init_status = get_curr_ntc_status();
+  
+  init_espnow_gateway();
+  ble_init_all();
+  init_rfid();
+  init_apr_layer();
+  setup_draw_infos();
+  
 
-  lv_tick_set_cb(my_get_millis);
-
-  lv_display_t* display = lv_display_create(240, 320);
-
-  static uint8_t buf[320 * 240 / 10 * 2];
-  lv_display_set_buffers(display, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
-  lv_display_set_flush_cb(display, my_flush_callback);
-
-  lv_theme_t* theme = lv_theme_default_init(
-    display,
-    lv_palette_main(LV_PALETTE_BLUE),
-    lv_palette_main(LV_PALETTE_CYAN),
-    true,
-    &minecraftia
-  );
+  if (get_curr_ntc_status() == NTC_SUCCESS) set_new_color(NTP_LABEL, UI_OK);
+  else set_new_color(NTP_LABEL, UI_ERROR);  
 
 
-  setup_draw_header();
-  setup_draw_cards_log();
-  // setup_draw_esp_connecteds();
+  for (int i = 0; i < MAX_PEER_CON; i++)
+    esp_records[i] = (char*)malloc(sizeof(char) * ESP_RECORD_SIZE);
+  
 }
 
 
 void loop()
 {
   lv_timer_handler();
-  delay(5);
+
+  if (millis() - last_read > READ_CARD_DELAY) 
+  {
+    assmeble_and_send_new_message();
+    last_read = millis();
+  }
+  
+
+  if (millis() - last_update > UPDATE_INFO_DELAY)
+  {
+    translate_get_esp_now_status();
+    translate_and_update_get_ble_status();
+    last_update = millis();
+  }
+
+  if (millis() - last_pong > PING_INTERVAL)
+  {
+    ble_check_ping();
+    last_pong = millis();
+  }
+  delay(15);
+
+
+
+
+  // curr_time = get_curr_time();
+  // Serial.println(curr_time);
+  // delay(1000);
+
+
+
+
+  // update_list((char*)&test);
+  // update_display();
+  // delay(1000);
+  // test++;
+
+
+
+
+  // set_new_color(NTC_LABEL, UI_ERROR);
+  // set_new_color(ESP_NOW_LABEL, UI_WARNING);
+  // update_display();
+  // delay(300);
+
+  // set_new_color(BLE_LABEL, UI_WARNING);
+  // set_new_color(NTC_LABEL, UI_OK);
+  // set_new_color(ESP_NOW_LABEL, UI_ERROR);
+  // update_display();
+  // delay(300);
+
+  // set_new_color(BLE_LABEL, UI_ERROR);
+  // set_new_color(NTC_LABEL, UI_WARNING);
+  // set_new_color(ESP_NOW_LABEL, UI_OK);
+  // update_display();
+  // delay(300);
 }
